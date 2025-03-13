@@ -9,15 +9,12 @@ int stepCount = 0;
 float prevAccelZ = 0;
 float threshold = 0.01;
 
-BLEService stepService("19B10010-E8F2-537E-4F6C-D104768A1214"); // create service
-
-// create switch characteristic and allow remote device to read and write
-BLEByteCharacteristic stepCharacteristic("19B10011-E8F2-537E-4F6C-D104768A1214", BLERead | 
-BLEWrite | BLENotify);
+// Create Service
+BLEService stepService("19B10010-E8F2-537E-4F6C-D104768A1214");
+BLEByteCharacteristic stepCharacteristic("19B10011-E8F2-537E-4F6C-D104768A1214", BLERead | BLENotify);
 
 
 void setup() {
-  // put your setup code here, to run once:
   Serial.begin(9600);
   while (!Serial);
 
@@ -55,14 +52,14 @@ void setup() {
 
 void loop() {
 
-  BLEDevice central = BLE.central(); // Check if a device is connected
+  // Check if a device is connected
+  BLEDevice central = BLE.central();
 
   if (central) {
     Serial.print("Connected to: ");
     Serial.println(central.address());
 
     while (central.connected()) {
-      // put your main code here, to run repeatedly:
       IMU.readAcceleration(x, y, z);
       float accelz = z/100.0;
       //Serial.println(accelz);
@@ -71,6 +68,7 @@ void loop() {
         stepCount++;
         Serial.print("Step Count: ");
         Serial.println(stepCount);
+        stepCharacteristic.writeValue(stepCount);
       }
 
       prevAccelZ = accelz;
