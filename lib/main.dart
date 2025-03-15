@@ -8,11 +8,11 @@ class MyApp extends StatelessWidget {
   const MyApp({super.key});
   @override
   Widget build(BuildContext context) => MaterialApp(
-    title: 'BLE Demo',
+    title: 'Fitness App',
     theme: ThemeData(
       primarySwatch: Colors.blue,
     ),
-    home: const MyHomePage(title: 'Flutter BLE Demo'),
+    home: const MyHomePage(title: 'Fitness App'),
   );
 }
 
@@ -25,7 +25,6 @@ class MyHomePage extends StatefulWidget {
 }
 
 class MyHomePageState extends State<MyHomePage> {
-  BluetoothDevice? _connectedDevice;
   List<BluetoothDevice> devicesList = [];
   List<BluetoothService> _services = [];
   Map<Guid, List<int>> readValues = {};
@@ -83,7 +82,6 @@ class MyHomePageState extends State<MyHomePage> {
     }
     _services = await device.discoverServices();
     for (var service in _services) {
-      print(service);
       if (service.uuid.toString() == serviceUuid) {
         for (var characteristic in service.characteristics) {
           if (characteristic.uuid.toString() == characteristicUuid) {
@@ -93,15 +91,11 @@ class MyHomePageState extends State<MyHomePage> {
         }
       }
     }
-    setState(() {
-      _connectedDevice = device;
-    });
   }
 
   void _subscribeToService() {
     stepCharacteristic?.setNotifyValue(true);
     stepCharacteristic?.lastValueStream.listen((value) {
-      print(value);
       if (value.isNotEmpty) {
         setState(() {
           stepCount = value[0];
@@ -131,9 +125,9 @@ class MyHomePageState extends State<MyHomePage> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Expanded(child: _buildStatCard("Steps Taken Today", stepCount.toString())),
+                Expanded(child: _buildStatCard("Steps Taken", stepCount.toString())),
                 const SizedBox(width: 16),
-                Expanded(child: _buildStatCard("Total Activities", "5")),
+                Expanded(child: _buildStatCard("Total Activities", "0")),
               ],
             ),
             const SizedBox(height: 16),
