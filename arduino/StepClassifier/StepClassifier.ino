@@ -1,13 +1,13 @@
 #include <Arduino_LSM9DS1.h>
-
+// #include <ArduinoBLE.h>
 #include <TensorFlowLite.h>
 #include "tensorflow/lite/micro/all_ops_resolver.h"
 #include "tensorflow/lite/micro/micro_interpreter.h"
 #include "tensorflow/lite/schema/schema_generated.h"
-
 #include "stepmodel.h"
 
-const int numSamples = 20;
+int stepCount = 0;
+float prevAccelz = 0;
 int samplesRead = 0;
 
 tflite::AllOpsResolver tflOpsResolver;
@@ -16,86 +16,102 @@ tflite::MicroInterpreter* tflInterpreter = nullptr;
 TfLiteTensor* tflInputTensor = nullptr;
 TfLiteTensor* tflOutputTensor = nullptr;
 
-constexpr int tensorArenaSize = 8 * 1024;
-byte tensorArena[tensorArenaSize] __attribute__((aligned(16)));
+constexpr int tensorArenaSize = 4 * 1024;
+byte tensorArena[tensorArenaSize] __attribute__((aligned(4)));
 
-const char* GESTURES[] = {"walk", "run"};
-#define NUM_GESTURES (sizeof(GESTURES) / sizeof(GESTURES[0]))
+// BLE Service and Characteristics
+// BLEService stepService("19B10010-E8F2-537E-4F6C-D104768A1214");
+// BLEByteCharacteristic stepCharacteristic("19B10011-E8F2-537E-4F6C-D104768A1214", BLERead | BLENotify);
 
 void setup() {
   Serial.begin(9600);
   while (!Serial);
 
-  // initialize the IMU
+  // Initialize BLE
+  // if (!BLE.begin()) {
+  //   Serial.println("Failed to initialize BLE!");
+  //   while (1);
+  // }
+
+  // BLE.setLocalName("StepTracker");
+  // BLE.setAdvertisedService(stepService);
+  // stepService.addCharacteristic(stepCharacteristic);
+  // BLE.addService(stepService);
+  // BLE.advertise();
+  // Serial.println("BLE Started");
+
+  // Initialize IMU
   if (!IMU.begin()) {
     Serial.println("Failed to initialize IMU!");
     while (1);
   }
 
-  // get the TFL representation of the model byte array
+  // Load the TFL model
   tflModel = tflite::GetModel(model);
   if (tflModel->version() != TFLITE_SCHEMA_VERSION) {
     Serial.println("Model schema mismatch!");
     return;
   }
 
-  // Create an interpreter to run the model
+  // Create interpreter
   tflInterpreter = new tflite::MicroInterpreter(tflModel, tflOpsResolver, tensorArena, tensorArenaSize);
-
-  // Allocate memory from the tensor_arena for the model's tensors.
-  TfLiteStatus allocate_status = tflInterpreter->AllocateTensors();
-  if (allocate_status != kTfLiteOk) {
-    MicroPrintf("AllocateTensors() failed");
+  
+  // Allocate tensors
+  if (tflInterpreter->AllocateTensors() != kTfLiteOk) {
+    Serial.println("AllocateTensors() failed");
     return;
   }
 
-  // Get pointers for the model's input and output tensors
   tflInputTensor = tflInterpreter->input(0);
   tflOutputTensor = tflInterpreter->output(0);
 }
 
 void loop() {
-  float aX, aY, aZ;
-
-  // normalize the IMU data between 0 to 1 and store in the model's input tensor
-  if (samplesRead < numSamples && IMU.accelerationAvailable()) {
-    IMU.readAcceleration(aX, aY, aZ);
-    tflInputTensor->data.f[samplesRead * 3 + 0] = aX;
-    tflInputTensor->data.f[samplesRead * 3 + 1] = aY;
-    tflInputTensor->data.f[samplesRead * 3 + 2] = aZ;
-    samplesRead++;
-  }
-	
-  // Run inferencing
-  if (samplesRead == numSamples) {
-    TfLiteStatus invokeStatus = tflInterpreter->Invoke();
-    if (invokeStatus != kTfLiteOk) {
-      Serial.println("Invoke failed!");
-      while (1);
-      return;
+  // BLEDevice central = BLE.central();
+  int central = true;
+  if (central) {
+    float x, y, z;
+    int activity = -1;
+    int lastActivity = 0;
+    
+    IMU.readAcceleration(x, y, z);
+    float accelz = z / 100.0;
+    if (prevAccelz < 0.01 && accelz >= 0.01) {
+      stepCount++;
+      Serial.println(stepCount);
+      // stepCharacteristic.writeValue(stepCount);
     }
-
-    // Loop through the output tensor values from the model
-    for (int i = 0; i < NUM_GESTURES; i++) {
-      Serial.print(GESTURES[i]);
-      Serial.print(": ");
-      Serial.println(tflOutputTensor->data.f[i], 6);
-    }
-
-    if (tflOutputTensor->data.f[0] < 0.6) {
-      Serial.println("running");
-    } else {
-      Serial.println("walking");
-    }
-
-    // Clean up the data buffer before filling up for the next batch.
-    int i = 0;
-    for (; i< numSamples; i ++) {
-      tflInputTensor->data.f[i * 3 + 0];
-    }
-
-    Serial.println();
-    samplesRead = 0;
+    prevAccelz = accelz;
     delay(100);
+
+    // Collect IMU data for inference
+    if (samplesRead < 20) {
+      tflInputTensor->data.f[samplesRead * 3 + 0] = x;
+      tflInputTensor->data.f[samplesRead * 3 + 1] = y;
+      tflInputTensor->data.f[samplesRead * 3 + 2] = z;
+      samplesRead++;
+    }
+        
+    // Run inferencing
+    if (samplesRead == 20) {
+      if (tflInterpreter->Invoke() == kTfLiteOk) {
+        activity = tflOutputTensor->data.f[0] < 0.6 ? -1 : -2; // -1 = run, -2 = walk
+        if (activity != lastActivity) {
+          Serial.println(activity);
+          // stepCharacteristic.writeValue(activity);
+          lastActivity = activity;
+        }
+      } else {
+        Serial.println("Invoke failed!");
+      }
+
+      // Reset input tensor data for next round
+      for (int i = 0; i < tflInputTensor->bytes / sizeof(float); i++) {
+        tflInputTensor->data.f[i] = 0.0f;
+      }
+
+      samplesRead = 0;
+      delay(200);
+    }
   }
 }
