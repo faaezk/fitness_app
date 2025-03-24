@@ -1,5 +1,5 @@
 #include <Arduino_LSM9DS1.h>
-// #include <ArduinoBLE.h>
+#include <ArduinoBLE.h>
 #include <TensorFlowLite.h>
 #include "tensorflow/lite/micro/all_ops_resolver.h"
 #include "tensorflow/lite/micro/micro_interpreter.h"
@@ -9,6 +9,9 @@
 int stepCount = 0;
 float prevAccelz = 0;
 int samplesRead = 0;
+int activity = 0;
+int lastActivity = -1;
+int lastLastActivity = -2;
 
 tflite::AllOpsResolver tflOpsResolver;
 const tflite::Model* tflModel = nullptr;
@@ -16,29 +19,31 @@ tflite::MicroInterpreter* tflInterpreter = nullptr;
 TfLiteTensor* tflInputTensor = nullptr;
 TfLiteTensor* tflOutputTensor = nullptr;
 
-constexpr int tensorArenaSize = 4 * 1024;
+constexpr int tensorArenaSize = 2 * 1024;
 byte tensorArena[tensorArenaSize] __attribute__((aligned(4)));
 
 // BLE Service and Characteristics
-// BLEService stepService("19B10010-E8F2-537E-4F6C-D104768A1214");
-// BLEByteCharacteristic stepCharacteristic("19B10011-E8F2-537E-4F6C-D104768A1214", BLERead | BLENotify);
+BLEService stepService("19B10010-E8F2-537E-4F6C-D104768A1214");
+BLEByteCharacteristic stepCharacteristic("19B10011-E8F2-537E-4F6C-D104768A1214", BLERead | BLENotify);
+BLEByteCharacteristic activityCharacteristic("19b10012-e8f2-537e-4f6c-d104768a1214", BLERead | BLENotify);
 
 void setup() {
   Serial.begin(9600);
   while (!Serial);
 
   // Initialize BLE
-  // if (!BLE.begin()) {
-  //   Serial.println("Failed to initialize BLE!");
-  //   while (1);
-  // }
+  if (!BLE.begin()) {
+    Serial.println("Failed to initialize BLE!");
+    while (1);
+  }
 
-  // BLE.setLocalName("StepTracker");
-  // BLE.setAdvertisedService(stepService);
-  // stepService.addCharacteristic(stepCharacteristic);
-  // BLE.addService(stepService);
-  // BLE.advertise();
-  // Serial.println("BLE Started");
+  BLE.setLocalName("StepTracker");
+  BLE.setAdvertisedService(stepService);
+  stepService.addCharacteristic(stepCharacteristic);
+  stepService.addCharacteristic(activityCharacteristic);
+  BLE.addService(stepService);
+  BLE.advertise();
+  Serial.println("BLE Started");
 
   // Initialize IMU
   if (!IMU.begin()) {
@@ -67,22 +72,17 @@ void setup() {
 }
 
 void loop() {
-  // BLEDevice central = BLE.central();
-  int central = true;
+  BLEDevice central = BLE.central();
   if (central) {
     float x, y, z;
-    int activity = -1;
-    int lastActivity = 0;
     
     IMU.readAcceleration(x, y, z);
     float accelz = z / 100.0;
     if (prevAccelz < 0.01 && accelz >= 0.01) {
       stepCount++;
-      Serial.println(stepCount);
-      // stepCharacteristic.writeValue(stepCount);
+      stepCharacteristic.writeValue(stepCount);
     }
     prevAccelz = accelz;
-    delay(100);
 
     // Collect IMU data for inference
     if (samplesRead < 20) {
@@ -95,11 +95,11 @@ void loop() {
     // Run inferencing
     if (samplesRead == 20) {
       if (tflInterpreter->Invoke() == kTfLiteOk) {
-        activity = tflOutputTensor->data.f[0] < 0.6 ? -1 : -2; // -1 = run, -2 = walk
-        if (activity != lastActivity) {
-          Serial.println(activity);
-          // stepCharacteristic.writeValue(activity);
-          lastActivity = activity;
+        lastLastActivity = lastActivity;
+        lastActivity = activity;
+        activity = tflOutputTensor->data.f[0] < 0.6 ? 0 : 1; // walk = 0, run = 1
+        if (activity == lastActivity && activity == lastLastActivity) {
+          activityCharacteristic.writeValue(activity);
         }
       } else {
         Serial.println("Invoke failed!");
@@ -111,7 +111,7 @@ void loop() {
       }
 
       samplesRead = 0;
-      delay(200);
+      delay(50);
     }
   }
 }
