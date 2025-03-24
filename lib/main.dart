@@ -29,10 +29,14 @@ class MyHomePageState extends State<MyHomePage> {
   List<BluetoothService> _services = [];
   Map<Guid, List<int>> readValues = {};
   int stepCount = 0;
+  List<String> activity = ["Walking", "Running"];
+  int activityIndex = 0;
 
   final String serviceUuid = "19b10010-e8f2-537e-4f6c-d104768a1214";
-  final String characteristicUuid = "19b10011-e8f2-537e-4f6c-d104768a1214";
+  final String stepCharacteristicUuid = "19b10011-e8f2-537e-4f6c-d104768a1214";
+  final String activityCharacteristicUuid = "19b10012-e8f2-537e-4f6c-d104768a1214";
   BluetoothCharacteristic? stepCharacteristic;
+  BluetoothCharacteristic? activityCharacteristic;
 
   @override
   void initState() {
@@ -84,21 +88,33 @@ class MyHomePageState extends State<MyHomePage> {
     for (var service in _services) {
       if (service.uuid.toString() == serviceUuid) {
         for (var characteristic in service.characteristics) {
-          if (characteristic.uuid.toString() == characteristicUuid) {
+          if (characteristic.uuid.toString() == stepCharacteristicUuid) {
             stepCharacteristic = characteristic;
-            _subscribeToService();
+          } else if (characteristic.uuid.toString() == activityCharacteristicUuid) {
+            activityCharacteristic = characteristic;
           }
         }
       }
     }
+
+    _subscribeToServices();
   }
 
-  void _subscribeToService() {
+  void _subscribeToServices() {
     stepCharacteristic?.setNotifyValue(true);
     stepCharacteristic?.lastValueStream.listen((value) {
       if (value.isNotEmpty) {
         setState(() {
           stepCount = value[0];
+        });
+      }
+    });
+    
+    activityCharacteristic?.setNotifyValue(true);
+    activityCharacteristic?.lastValueStream.listen((value) {
+      if (value.isNotEmpty) {
+        setState(() {
+          activityIndex = value[0];
         });
       }
     });
@@ -120,34 +136,18 @@ class MyHomePageState extends State<MyHomePage> {
       body: Padding(
         padding: const EdgeInsets.all(24.0),
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Expanded(child: _buildStatCard("Steps Taken", stepCount.toString())),
-                const SizedBox(width: 16),
-                Expanded(child: _buildStatCard("Total Activities", "0")),
-              ],
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [Expanded(child: _buildStatCard("Steps Taken", stepCount.toString()))],
             ),
             const SizedBox(height: 16),
-            Expanded(
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(16.0),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: const Align(
-                  alignment: Alignment.topLeft,
-                  child: Text(
-                    "Activity Sessions",
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                  ),
-                ),
-              ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [Expanded(child: _buildStatCard("Activity Status", activity[activityIndex]))],
             ),
+            const SizedBox(height: 256),
           ],
         ),
       ),
