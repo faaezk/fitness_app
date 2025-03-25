@@ -29,7 +29,7 @@ class MyHomePageState extends State<MyHomePage> {
   List<BluetoothService> _services = [];
   Map<Guid, List<int>> readValues = {};
   int stepCount = 0;
-  List<String> activity = ["Walking", "Running"];
+  List<String> activity = ["Idle", "Moving"];
   int activityIndex = 0;
 
   final String serviceUuid = "19b10010-e8f2-537e-4f6c-d104768a1214";

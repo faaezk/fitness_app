@@ -97,7 +97,7 @@ void loop() {
       if (tflInterpreter->Invoke() == kTfLiteOk) {
         lastLastActivity = lastActivity;
         lastActivity = activity;
-        activity = tflOutputTensor->data.f[0] < 0.6 ? 0 : 1; // walk = 0, run = 1
+        activity = tflOutputTensor->data.f[0] < 0.6 ? 0 : 1; // idle = 0, moving = 1
         if (activity == lastActivity && activity == lastLastActivity) {
           activityCharacteristic.writeValue(activity);
         }
